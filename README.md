@@ -40,7 +40,7 @@ Copy `.github/ISSUE_TEMPLATE/agent-task.md` into a repo to give its issues the c
 
 ## Development
 
-Requires Node 22 (`nvm use` reads `.nvmrc`) and pnpm.
+Requires Node 26 (`nvm use` reads `.nvmrc`) and pnpm.
 
 ```bash
 pnpm install

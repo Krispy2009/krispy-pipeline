@@ -4,7 +4,7 @@ The engine for an agentic ticket-to-PR pipeline. Read `docs/decisions/` before p
 
 ## Stack
 
-- Node 22, TypeScript (strict), ESM
+- Node 26, TypeScript (strict), ESM
 - pnpm
 - vitest for tests
 - zod for config and payload validation
