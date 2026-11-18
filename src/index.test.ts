@@ -1,9 +1,9 @@
-import { describe as suite, expect, it } from "vitest";
-import { NAME, describe } from "./index.js";
+import { describe, expect, it } from "vitest";
+import { NAME, banner } from "./index.js";
 
-suite("index", () => {
-  it("exposes the package name and a description", () => {
+describe("index", () => {
+  it("exposes the package name and a banner", () => {
     expect(NAME).toBe("krispy-pipeline");
-    expect(describe()).toBe("krispy-pipeline launcher");
+    expect(banner()).toBe("krispy-pipeline launcher");
   });
 });

@@ -1,5 +1,5 @@
 export const NAME = "krispy-pipeline";
 
-export function describe(): string {
+export function banner(): string {
   return `${NAME} launcher`;
 }
