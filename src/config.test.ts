@@ -123,8 +123,22 @@ describe("loadProjects", () => {
   it("ignores files that are not .yaml", () => {
     write("widgets.yaml", widgets);
     write("notes.txt", "not yaml: [");
-    write("other.yml", "garbage");
     expect(loadProjects(dir)).toHaveLength(1);
+  });
+
+  it("reports .yml files instead of silently ignoring them", () => {
+    write("widgets.yaml", widgets);
+    write("gadgets.yml", gadgets);
+    expect(thrown(() => loadProjects(dir))).toContain("gadgets.yml: unsupported extension");
+  });
+
+  it("reports duplicates alongside other validation errors", () => {
+    write("a.yaml", widgets);
+    write("b.yaml", "id: widgets\nrepo: acme/widgets\nworkdir: /y\ntracker: jira\n");
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("b.yaml: tracker");
+    expect(message).toContain("b.yaml: id: duplicate of a.yaml");
+    expect(message).toContain("b.yaml: repo: duplicate of a.yaml");
   });
 
   it("returns an empty list for an empty directory", () => {

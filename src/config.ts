@@ -43,17 +43,20 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * Loads every `*.yaml` file in `dir`. Throws one error listing every file and
+ * Loads every `*.yaml` file in `dir` (`.yml` is rejected, not ignored). Throws one error listing every file and
  * field that failed; nothing is returned unless every file is valid.
  * Messages carry paths and schema messages only, never parsed values.
  */
 export function loadProjects(dir: string): Project[] {
-  const files = readdirSync(dir)
-    .filter((name) => name.endsWith(".yaml"))
-    .sort();
+  const names = readdirSync(dir).sort();
+  const files = names.filter((name) => name.endsWith(".yaml"));
 
   const problems: string[] = [];
-  const loaded: { file: string; project: Project }[] = [];
+  for (const name of names.filter((n) => n.endsWith(".yml"))) {
+    problems.push(`${name}: unsupported extension, rename it to .yaml`);
+  }
+  const loaded: Project[] = [];
+  const identities: { file: string; id?: string; repo?: string }[] = [];
 
   for (const file of files) {
     let raw: unknown;
@@ -63,6 +66,14 @@ export function loadProjects(dir: string): Project[] {
       problems.push(`${file}: could not read or parse YAML (${errorMessage(err).split("\n")[0]})`);
       continue;
     }
+    if (typeof raw === "object" && raw !== null) {
+      const { id, repo } = raw as Record<string, unknown>;
+      identities.push({
+        file,
+        ...(typeof id === "string" ? { id } : {}),
+        ...(typeof repo === "string" ? { repo: repo.toLowerCase() } : {}),
+      });
+    }
     const result = projectSchema.safeParse(raw);
     if (!result.success) {
       for (const issue of result.error.issues) {
@@ -71,13 +82,16 @@ export function loadProjects(dir: string): Project[] {
       }
       continue;
     }
-    loaded.push({ file, project: result.data });
+    loaded.push(result.data);
   }
 
   const seen = { id: new Map<string, string>(), repo: new Map<string, string>() };
-  for (const { file, project } of loaded) {
+  // Checked on the raw values so duplicates surface alongside other errors, not after them.
+  for (const identity of identities) {
     for (const key of ["id", "repo"] as const) {
-      const value = key === "repo" ? project.repo.toLowerCase() : project.id;
+      const value = identity[key];
+      if (value === undefined) continue;
+      const file = identity.file;
       const first = seen[key].get(value);
       if (first === undefined) seen[key].set(value, file);
       else problems.push(`${file}: ${key}: duplicate of ${first}`);
@@ -87,5 +101,5 @@ export function loadProjects(dir: string): Project[] {
   if (problems.length > 0) {
     throw new Error(`Invalid project config:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
   }
-  return loaded.map((l) => l.project);
+  return loaded;
 }
