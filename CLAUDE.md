@@ -16,8 +16,6 @@ The engine for an agentic ticket-to-PR pipeline. Read `docs/decisions/` before p
 - pnpm lint
 - pnpm test
 
-(These become real once the launcher package exists. Until then, there are no checks.)
-
 ## Rules
 
 - This repo is **public**. Never commit client names, real repo names, project YAMLs, tokens, keys, logs or run transcripts. Test fixtures use invented repos like `acme/widgets`.
