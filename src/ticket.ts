@@ -16,6 +16,7 @@ export type TicketCheck = { ok: true } | { ok: false; missing: string[] };
 
 const COMMENT = /<!--[\s\S]*?-->/g;
 const HEADING = /^## (.*?)\s*$/;
+const FENCE = /^\s*(```|~~~)/;
 const ITEM = /^\s*[-*] \[( |x|X)\][ \t]*(.*)$/;
 
 function sections(body: string): Map<string, string> {
@@ -25,7 +26,14 @@ function sections(body: string): Map<string, string> {
   const flush = (): void => {
     if (name !== undefined && !result.has(name)) result.set(name, lines.join("\n"));
   };
+  let inFence = false;
   for (const line of body.replace(COMMENT, "").split(/\r?\n/)) {
+    // Fenced code is quoted material: it never starts a section or contributes content.
+    if (FENCE.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
     const heading = HEADING.exec(line);
     if (heading) {
       flush();

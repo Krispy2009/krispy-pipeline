@@ -60,6 +60,15 @@ describe("parseTicket", () => {
     expect(t.blockers).toEqual([]);
   });
 
+  it("ignores headings and items inside fenced code blocks", () => {
+    const t = parseTicket(
+      "## Acceptance\n- [ ] real\n```md\n## Blockers\n#9\n- [ ] quoted\n```\n## Blockers\nNone\n",
+    );
+    expect(t.acceptance).toEqual([{ text: "real", checked: false }]);
+    expect(t.blockers).toEqual([]);
+    expect(t.blockersError).toBeUndefined();
+  });
+
   it("drops blank checklist items from the untouched template", () => {
     expect(parseTicket("## Acceptance\n- [ ] \n- [ ]\n").acceptance).toEqual([]);
   });
