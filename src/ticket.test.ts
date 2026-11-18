@@ -70,6 +70,7 @@ describe("parseTicket", () => {
       acceptance: [],
       blockers: [],
       outOfScope: "",
+      blockersError: expect.any(String),
     });
   });
 });
@@ -108,6 +109,30 @@ describe("checkTicket", () => {
         "Blocker #2 is still open",
       ],
     });
+  });
+
+  it("fails when the Blockers section is missing", async () => {
+    const result = await checkTicket(parseTicket("## Acceptance\n- [ ] a\n"), allClosed);
+    expect(result).toEqual({
+      ok: false,
+      missing: ["Blockers section is missing or must be None or a list of #N"],
+    });
+  });
+
+  it("fails when Blockers is prose with no #N", async () => {
+    const result = await checkTicket(
+      parseTicket("## Acceptance\n- [ ] a\n## Blockers\nDepends on the parser work\n"),
+      allClosed,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("fails when Blockers is empty or only a comment", async () => {
+    const result = await checkTicket(
+      parseTicket("## Acceptance\n- [ ] a\n## Blockers\n<!-- none yet -->\n"),
+      allClosed,
+    );
+    expect(result.ok).toBe(false);
   });
 
   it("does not call isClosed when there are no blockers", async () => {
