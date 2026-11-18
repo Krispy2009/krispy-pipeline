@@ -1,0 +1,17 @@
+# Copy to ~/.config/krispy-pipeline/projects/<id>.yaml. Never commit the real one.
+id: widgets
+repo: acme/widgets
+tracker: github            # github | linear (later)
+auth: app                  # app | byo-token
+workdir: ~/krispy/widgets
+decisions: docs/decisions/
+setup:
+  - docker compose -p widgets-slot${SLOT} up -d db
+  - pnpm install --frozen-lockfile
+  - pnpm drizzle-kit migrate
+checks: [pnpm typecheck, pnpm lint, pnpm test]
+planApproval: human        # human | reviewer-then-human
+limits:
+  maxPlanRounds: 3
+  maxPrRounds: 10
+  runMinutes: 60
