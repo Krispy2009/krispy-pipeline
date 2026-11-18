@@ -1,6 +1,7 @@
 ---
 description: Check a GitHub issue against the ticket contract, plan it, and post the plan to the issue
 argument-hint: <issue-number>
+model: opus
 allowed-tools: Bash(gh issue view:*), Bash(gh issue comment:*), Bash(gh repo view:*), Bash(git fetch:*), Bash(git log:*), Bash(git show:*), Bash(git rev-parse:*), Read, Grep, Glob
 ---
 

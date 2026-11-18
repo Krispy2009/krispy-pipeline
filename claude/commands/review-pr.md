@@ -7,7 +7,7 @@ argument-hint: <pr-number>
 
 Use the **pr-reviewer** subagent to review PR #$ARGUMENTS in this repo.
 
-Give it **only** the PR number and the output of `gh repo view --json nameWithOwner -q .nameWithOwner`. Don't pass along your own view of the PR, the plan, or anything from this conversation. Its value comes from fresh context.
+Give it **only** the PR number and the output of `gh repo view --json nameWithOwner -q .nameWithOwner`. Don't pass along your own view of the PR, the plan, or anything from this conversation. Its value comes from fresh context. Don't pass a model override either: the subagent's own `model` setting (Opus) must apply.
 
 When it returns, relay its verdict, the number of blocking and non-blocking findings, and the review link. Don't soften or reinterpret the findings.
 

@@ -1,6 +1,7 @@
 ---
 description: Address unresolved review threads on a PR, push fixes, reply to each thread
 argument-hint: <pr-number>
+model: sonnet
 ---
 
 # Fix review on PR #$ARGUMENTS

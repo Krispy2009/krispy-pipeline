@@ -1,6 +1,7 @@
 ---
 description: Build the latest plan for an issue (running this = approval) and open a draft PR
 argument-hint: <issue-number>
+model: sonnet
 ---
 
 # Build issue #$ARGUMENTS
