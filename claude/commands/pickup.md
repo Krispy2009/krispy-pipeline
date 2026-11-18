@@ -47,7 +47,7 @@ Use this structure:
 ```
 ## Plan <id>
 
-**Summary** — 2–3 lines.
+**What this is about** — 3–5 plain sentences, no jargon or code names: what is missing or broken today, why it matters, and what will be different when this ships. Write it so Kristi can pick the ticket back up cold after a few days away. Don't restate the acceptance list.
 
 **Acceptance mapping**
 | Acceptance item | Step(s) | Verified by |
@@ -66,6 +66,8 @@ Use this structure:
 ```
 
 If you are asking a blocking question instead of planning, make the final line `<!-- krispy:result=question -->`.
+
+Style: short and concrete. No filler ("This plan outlines…", "In summary…"), no repeating the same point in two sections. Prefer one specific sentence to three general ones.
 
 ## 6. Post
 
