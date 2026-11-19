@@ -48,6 +48,8 @@ pnpm typecheck && pnpm lint && pnpm test   # the checks
 pnpm build                                 # compiles src/ to dist/
 ```
 
+CI runs typecheck, lint, test and gitleaks on every pull request and every push to `main`.
+
 ```bash
 pip install pre-commit && pre-commit install   # gitleaks on every commit
 ```
