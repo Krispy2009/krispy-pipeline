@@ -132,6 +132,27 @@ describe("loadProjects", () => {
     expect(thrown(() => loadProjects(dir))).toContain("gadgets.yml: unsupported extension");
   });
 
+  it("treats extensions case-insensitively", () => {
+    write("widgets.YAML", widgets);
+    write("gadgets.YML", gadgets);
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("gadgets.YML: unsupported extension");
+    expect(message).not.toContain("widgets.YAML");
+  });
+
+  it("loads an upper-case .YAML file", () => {
+    write("widgets.YAML", widgets);
+    expect(loadProjects(dir)).toHaveLength(1);
+  });
+
+  it("does not report a duplicate for an invalid repo", () => {
+    write("a.yaml", "id: a\nrepo: not-a-repo\nworkdir: /x\n");
+    write("b.yaml", "id: b\nrepo: not-a-repo\nworkdir: /y\n");
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("a.yaml: repo");
+    expect(message).not.toContain("duplicate");
+  });
+
   it("reports duplicates alongside other validation errors", () => {
     write("a.yaml", widgets);
     write("b.yaml", "id: widgets\nrepo: acme/widgets\nworkdir: /y\ntracker: jira\n");

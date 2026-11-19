@@ -23,9 +23,12 @@ const limitsSchema = z.strictObject({
   runMinutes: z.number().int().positive().default(60),
 });
 
+const idSchema = z.string().min(1);
+const repoSchema = z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "must look like owner/name");
+
 export const projectSchema = z.strictObject({
-  id: z.string().min(1),
-  repo: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "must look like owner/name"),
+  id: idSchema,
+  repo: repoSchema,
   tracker: z.enum(["github", "linear"]).default("github"),
   auth: z.enum(["app", "byo-token"]).default("app"),
   workdir: z.string().min(1).transform(expandHome),
@@ -49,10 +52,11 @@ function errorMessage(err: unknown): string {
  */
 export function loadProjects(dir: string): Project[] {
   const names = readdirSync(dir).sort();
-  const files = names.filter((name) => name.endsWith(".yaml"));
+  const extension = (name: string): string => name.toLowerCase().slice(name.lastIndexOf("."));
+  const files = names.filter((name) => extension(name) === ".yaml");
 
   const problems: string[] = [];
-  for (const name of names.filter((n) => n.endsWith(".yml"))) {
+  for (const name of names.filter((n) => extension(n) === ".yml")) {
     problems.push(`${name}: unsupported extension, rename it to .yaml`);
   }
   const loaded: Project[] = [];
@@ -66,12 +70,15 @@ export function loadProjects(dir: string): Project[] {
       problems.push(`${file}: could not read or parse YAML (${errorMessage(err).split("\n")[0]})`);
       continue;
     }
-    if (typeof raw === "object" && raw !== null) {
-      const { id, repo } = raw as Record<string, unknown>;
+    // Validated with the same field schemas as the project, so only well-formed values are compared.
+    const fields = z.record(z.string(), z.unknown()).safeParse(raw);
+    if (fields.success) {
+      const id = idSchema.safeParse(fields.data.id);
+      const repo = repoSchema.safeParse(fields.data.repo);
       identities.push({
         file,
-        ...(typeof id === "string" ? { id } : {}),
-        ...(typeof repo === "string" ? { repo: repo.toLowerCase() } : {}),
+        ...(id.success ? { id: id.data } : {}),
+        ...(repo.success ? { repo: repo.data.toLowerCase() } : {}),
       });
     }
     const result = projectSchema.safeParse(raw);
