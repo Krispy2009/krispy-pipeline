@@ -23,6 +23,8 @@ issue + label agent:build
 
 Design decisions are recorded in [`docs/decisions/`](docs/decisions/).
 
+**Build log:** the surprises and failures from building this are in [`docs/journal.md`](docs/journal.md).
+
 ## Use the commands today
 
 ```bash
