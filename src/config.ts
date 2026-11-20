@@ -46,10 +46,14 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * Loads every `*.yaml` file in `dir` (subdirectories are ignored). Extensions are matched case-insensitively, so `widgets.YAML` loads too, and
+ * Loads every `*.yaml` file in `dir`. Extensions are matched case-insensitively, so `widgets.YAML` loads too, and
  * `.yml` in any case is rejected, not ignored. Throws one error listing every file and field that failed, including
  * duplicate `id` or `repo` across files; nothing is returned unless every file is valid.
  * Messages carry paths and schema messages only, never parsed values.
+ *
+ * Deliberately ignored: subdirectories, and files named exactly `.yaml` or `.yml` (hidden files with no extension).
+ * Symlinks are followed, so a linked config file loads (e.g. one kept in a dotfiles repo) and a link to a directory
+ * is skipped like a directory.
  */
 export function loadProjects(dir: string): Project[] {
   // Directories are skipped whatever their name. Anything else, including an entry that can't be stat'ed (a broken
@@ -64,7 +68,7 @@ export function loadProjects(dir: string): Project[] {
   const names = readdirSync(dir)
     .filter((name) => !isDirectory(name))
     .sort();
-  // extname ignores a leading dot, so a hidden file named just ".yaml" is not loaded.
+  // extname ignores a leading dot, so hidden files named just ".yaml" or ".yml" are neither loaded nor reported.
   const extension = (name: string): string => extname(name).toLowerCase();
   const files = names.filter((name) => extension(name) === ".yaml");
 

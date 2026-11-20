@@ -154,6 +154,19 @@ describe("loadProjects", () => {
     expect(message).not.toContain("duplicate");
   });
 
+  it("follows symlinks: a linked file loads, a linked directory is skipped", () => {
+    const outside = mkdtempSync(join(tmpdir(), "krispy-linked-"));
+    try {
+      writeFileSync(join(outside, "widgets.yaml"), widgets);
+      mkdirSync(join(outside, "nested"));
+      symlinkSync(join(outside, "widgets.yaml"), join(dir, "widgets.yaml"));
+      symlinkSync(join(outside, "nested"), join(dir, "nested.yaml"));
+      expect(loadProjects(dir)).toHaveLength(1);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it("ignores directories, whatever their extension", () => {
     mkdirSync(join(dir, "nested.yaml"));
     mkdirSync(join(dir, "nested.yml"));
@@ -169,8 +182,9 @@ describe("loadProjects", () => {
     expect(message).toContain("loop.yaml: could not read or parse YAML");
   });
 
-  it("ignores a hidden file named just .yaml", () => {
+  it("ignores hidden files named just .yaml or .yml", () => {
     write(".yaml", "not: a project\n");
+    write(".yml", "not: a project\n");
     write("widgets.yaml", widgets);
     expect(loadProjects(dir)).toHaveLength(1);
   });
