@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join } from "node:path";
 import { parse } from "yaml";
@@ -46,13 +46,17 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * Loads every `*.yaml` file in `dir`. Extensions are matched case-insensitively, so `widgets.YAML` loads too, and
+ * Loads every `*.yaml` file in `dir` (subdirectories are ignored). Extensions are matched case-insensitively, so `widgets.YAML` loads too, and
  * `.yml` in any case is rejected, not ignored. Throws one error listing every file and field that failed, including
  * duplicate `id` or `repo` across files; nothing is returned unless every file is valid.
  * Messages carry paths and schema messages only, never parsed values.
  */
 export function loadProjects(dir: string): Project[] {
-  const names = readdirSync(dir).sort();
+  // Directories are skipped whatever their name. Anything else (including a broken symlink) is kept, so it gets reported.
+  const isDirectory = (name: string): boolean => statSync(join(dir, name), { throwIfNoEntry: false })?.isDirectory() ?? false;
+  const names = readdirSync(dir)
+    .filter((name) => !isDirectory(name))
+    .sort();
   // extname ignores a leading dot, so a hidden file named just ".yaml" is not loaded.
   const extension = (name: string): string => extname(name).toLowerCase();
   const files = names.filter((name) => extension(name) === ".yaml");

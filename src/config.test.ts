@@ -129,14 +129,14 @@ describe("loadProjects", () => {
   it("reports .yml files instead of silently ignoring them", () => {
     write("widgets.yaml", widgets);
     write("gadgets.yml", gadgets);
-    expect(thrown(() => loadProjects(dir))).toContain("gadgets.yml: unsupported extension");
+    expect(thrown(() => loadProjects(dir))).toContain("gadgets.yml: unsupported extension, rename it to .yaml");
   });
 
   it("treats extensions case-insensitively", () => {
     write("widgets.YAML", widgets);
     write("gadgets.YML", gadgets);
     const message = thrown(() => loadProjects(dir));
-    expect(message).toContain("gadgets.YML: unsupported extension");
+    expect(message).toContain("gadgets.YML: unsupported extension, rename it to .yaml");
     expect(message).not.toContain("widgets.YAML");
   });
 
@@ -152,6 +152,13 @@ describe("loadProjects", () => {
     expect(message).toContain("a.yaml: repo");
     expect(message).toContain("b.yaml: repo");
     expect(message).not.toContain("duplicate");
+  });
+
+  it("ignores directories, whatever their extension", () => {
+    mkdirSync(join(dir, "nested.yaml"));
+    mkdirSync(join(dir, "nested.yml"));
+    write("widgets.yaml", widgets);
+    expect(loadProjects(dir)).toHaveLength(1);
   });
 
   it("ignores a hidden file named just .yaml", () => {
