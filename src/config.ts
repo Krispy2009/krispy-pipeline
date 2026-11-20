@@ -46,16 +46,6 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * Loads every `*.yaml` file in `dir`. Extensions are matched case-insensitively, so `widgets.YAML` loads too, and
- * `.yml` in any case is rejected, not ignored. Throws one error listing every file and field that failed, including
- * duplicate `id` or `repo` across files; nothing is returned unless every file is valid.
- * Messages carry paths and schema messages only, never parsed values.
- *
- * Deliberately ignored: subdirectories and other non-regular files (such as FIFOs), and files named exactly `.yaml`
- * or `.yml` (hidden files with no extension). Symlinks are followed, so a linked config file loads (e.g. one kept in a
- * dotfiles repo) and a link to a directory is skipped like a directory.
- */
-/**
  * Reads `path` only if it is a regular file at the moment it is opened, else returns `undefined`. Opening non-blocking
  * and checking the open descriptor means an entry swapped for a FIFO after the directory scan can't block the read.
  */
@@ -69,6 +59,16 @@ function readRegularFile(path: string): string | undefined {
   }
 }
 
+/**
+ * Loads every `*.yaml` file in `dir`. Extensions are matched case-insensitively, so `widgets.YAML` loads too, and
+ * `.yml` in any case is rejected, not ignored. Throws one error listing every file and field that failed, including
+ * duplicate `id` or `repo` across files; nothing is returned unless every file is valid.
+ * Messages carry paths and schema messages only, never parsed values.
+ *
+ * Deliberately ignored: subdirectories and other non-regular files (such as FIFOs), and files named exactly `.yaml`
+ * or `.yml` (hidden files with no extension). Symlinks are followed, so a linked config file loads (e.g. one kept in a
+ * dotfiles repo) and a link to a directory is skipped like a directory.
+ */
 export function loadProjects(dir: string): Project[] {
   // Only regular files are considered, so directories, FIFOs and other special files are skipped whatever their name
   // (a FIFO would block the read). An entry that can't be stat'ed (a broken symlink, a symlink loop, no permission) is
@@ -96,7 +96,11 @@ export function loadProjects(dir: string): Project[] {
     let raw: unknown;
     try {
       const text = readRegularFile(join(dir, file));
-      if (text === undefined) continue; // no longer a regular file: skipped, like at scan time
+      if (text === undefined) {
+        // Was a regular file at scan time but not when opened: report it rather than skip it silently.
+        problems.push(`${file}: not a regular file when read, check the config directory`);
+        continue;
+      }
       raw = parse(text);
     } catch (err) {
       problems.push(`${file}: could not read or parse YAML (${errorMessage(err).split("\n")[0]})`);
