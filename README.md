@@ -57,3 +57,7 @@ pip install pre-commit && pre-commit install   # gitleaks on every commit
 ```
 
 Never commit real project configs, client names, logs or run transcripts. See [ADR 0002](docs/decisions/0002-public-engine-private-config.md).
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
