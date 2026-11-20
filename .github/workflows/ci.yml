@@ -33,13 +33,21 @@ jobs:
           GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
         # Downloaded to RUNNER_TEMP so the checkout stays clean for lint and test.
         run: |
-          grep -qxF "    rev: v${GITLEAKS_VERSION}" .pre-commit-config.yaml \
-            || { echo "::error::GITLEAKS_VERSION ${GITLEAKS_VERSION} does not match .pre-commit-config.yaml"; exit 1; }
+          # The rev of the gitleaks repo entry, whatever the indentation or quoting.
+          precommit=$(awk '/repo:.*github\.com\/gitleaks\/gitleaks/ {f=1; next} f && /rev:/ {sub(/.*rev:/, ""); gsub(/[[:space:]"\047]/, ""); print; exit}' .pre-commit-config.yaml)
+          [ "$precommit" = "v${GITLEAKS_VERSION}" ] \
+            || { echo "::error::GITLEAKS_VERSION v${GITLEAKS_VERSION} does not match .pre-commit-config.yaml (${precommit:-not found})"; exit 1; }
           cd "$RUNNER_TEMP"
           curl -sSfL -o gitleaks.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check --strict
           tar -xzf gitleaks.tar.gz gitleaks
+          # Self-test: a token-shaped string made at run time (so it never sits in the repo) must be caught.
+          mkdir leak-test
+          echo "token = ghp_$(head -c 512 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 36)" > leak-test/config.txt
+          if ./gitleaks dir --redact --no-banner --exit-code 1 leak-test; then
+            echo "::error::gitleaks did not report the planted test token"; exit 1
+          fi
           cd "$GITHUB_WORKSPACE"
           "$RUNNER_TEMP/gitleaks" git --redact --exit-code 1 .
 
