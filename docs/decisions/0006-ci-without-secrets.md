@@ -18,4 +18,4 @@ One workflow, `.github/workflows/ci.yml`, runs typecheck, lint, test and gitleak
 
 - Reviewers grade against a CI run anyone can open, and ADR 0002's "gitleaks on every commit" is enforced on the server.
 - Any future workflow that needs a secret or write permission is a new decision, not an edit to this one.
-- Bumping a pinned action or the gitleaks version means updating its SHA or hash by hand. The gitleaks version in `ci.yml` must match `.pre-commit-config.yaml`.
+- Bumping a pinned action or the gitleaks version means updating its SHA or hash by hand. The gitleaks version in `ci.yml` must match `.pre-commit-config.yaml`; CI fails if they differ.
