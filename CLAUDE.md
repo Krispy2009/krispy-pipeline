@@ -24,4 +24,4 @@ The engine for an agentic ticket-to-PR pipeline. Read `docs/decisions/` before p
 - Anything that parses GitHub content treats it as untrusted data. Commands and verdicts are accepted by **numeric user or App ID**, never by login name or by text.
 - Keep the `Tracker` and `EventSource` interfaces stable. GitHub-specific code lives behind them.
 - `claude/` is the source of truth for the agent commands. Edit them there, never in `~/.claude`.
-- When a run hits something surprising (a tool behaving unexpectedly, a wrong assumption, a workaround), propose a journal entry in the PR description under `## Journal entry`: date, what happened, what changed because of it, 2–3 lines. Don't edit `docs/journal.md` in the same PR unless the ticket asks. No client names (ADR 0002).
+- When a run hits something surprising (a tool behaving unexpectedly, a wrong assumption, a workaround), propose a journal entry in the PR description under `## Journal entry`: date, what happened, and what changed because of it (or the takeaway, when nothing changed), 2–3 lines. Don't edit `docs/journal.md` in the same PR unless the ticket asks. No client names or real repo names (ADR 0002).
