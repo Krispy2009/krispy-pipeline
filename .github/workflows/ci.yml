@@ -45,9 +45,11 @@ jobs:
           # Self-test: a token-shaped string made at run time (so it never sits in the repo) must be caught.
           mkdir leak-test
           echo "token = ghp_$(head -c 512 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 36)" > leak-test/config.txt
-          if ./gitleaks dir --redact --no-banner --exit-code 1 leak-test; then
-            echo "::error::gitleaks did not report the planted test token"; exit 1
-          fi
+          # A distinct exit code, so a gitleaks that fails to run (exit 1) can't pass as a catch.
+          status=0
+          ./gitleaks dir --redact --no-banner --exit-code 42 leak-test || status=$?
+          [ "$status" -eq 42 ] \
+            || { echo "::error::gitleaks self-test expected exit 42 for the planted token, got ${status}"; exit 1; }
           cd "$GITHUB_WORKSPACE"
           "$RUNNER_TEMP/gitleaks" git --redact --exit-code 1 .
 
