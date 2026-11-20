@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -159,6 +159,14 @@ describe("loadProjects", () => {
     mkdirSync(join(dir, "nested.yml"));
     write("widgets.yaml", widgets);
     expect(loadProjects(dir)).toHaveLength(1);
+  });
+
+  it("reports an entry that can't be stat'ed in the combined error", () => {
+    symlinkSync("loop.yaml", join(dir, "loop.yaml"));
+    write("widgets.yaml", widgets);
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("Invalid project config");
+    expect(message).toContain("loop.yaml: could not read or parse YAML");
   });
 
   it("ignores a hidden file named just .yaml", () => {

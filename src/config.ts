@@ -52,8 +52,15 @@ function errorMessage(err: unknown): string {
  * Messages carry paths and schema messages only, never parsed values.
  */
 export function loadProjects(dir: string): Project[] {
-  // Directories are skipped whatever their name. Anything else (including a broken symlink) is kept, so it gets reported.
-  const isDirectory = (name: string): boolean => statSync(join(dir, name), { throwIfNoEntry: false })?.isDirectory() ?? false;
+  // Directories are skipped whatever their name. Anything else, including an entry that can't be stat'ed (a broken
+  // symlink, a symlink loop, no permission), is kept, so reading it reports the problem in the combined error.
+  const isDirectory = (name: string): boolean => {
+    try {
+      return statSync(join(dir, name)).isDirectory();
+    } catch {
+      return false;
+    }
+  };
   const names = readdirSync(dir)
     .filter((name) => !isDirectory(name))
     .sort();
