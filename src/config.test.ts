@@ -141,9 +141,10 @@ describe("loadProjects", () => {
     expect(message).not.toContain("widgets.YAML");
   });
 
-  it("loads an upper-case .YAML file", () => {
+  it("loads upper- and mixed-case .yaml files", () => {
     write("widgets.YAML", widgets);
-    expect(loadProjects(dir)).toHaveLength(1);
+    write("gadgets.Yaml", gadgets);
+    expect(loadProjects(dir).map((p) => p.id)).toEqual(["gadgets", "widgets"]);
   });
 
   it("does not report a duplicate for an invalid repo", () => {
