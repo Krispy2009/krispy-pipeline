@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 
@@ -23,9 +23,12 @@ const limitsSchema = z.strictObject({
   runMinutes: z.number().int().positive().default(60),
 });
 
+const idSchema = z.string().min(1);
+const repoSchema = z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "must look like owner/name");
+
 export const projectSchema = z.strictObject({
-  id: z.string().min(1),
-  repo: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "must look like owner/name"),
+  id: idSchema,
+  repo: repoSchema,
   tracker: z.enum(["github", "linear"]).default("github"),
   auth: z.enum(["app", "byo-token"]).default("app"),
   workdir: z.string().min(1).transform(expandHome),
@@ -43,25 +46,76 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * Loads every `*.yaml` file in `dir`. Throws one error listing every file and
- * field that failed; nothing is returned unless every file is valid.
+ * Reads `path` only if it is a regular file at the moment it is opened, else returns `undefined`. Opening non-blocking
+ * and checking the open descriptor means an entry swapped for a FIFO after the directory scan can't block the read.
+ */
+function readRegularFile(path: string): string | undefined {
+  // O_NONBLOCK is undefined on Windows, where there are no FIFOs to guard against.
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  try {
+    return fstatSync(fd).isFile() ? readFileSync(fd, "utf8") : undefined;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Loads every `*.yaml` file in `dir`. Extensions are matched case-insensitively, so `widgets.YAML` loads too, and
+ * `.yml` in any case is rejected, not ignored. Throws one error listing every file and field that failed, including
+ * duplicate `id` or `repo` across files; nothing is returned unless every file is valid.
  * Messages carry paths and schema messages only, never parsed values.
+ *
+ * Deliberately ignored: subdirectories and other non-regular files (such as FIFOs), and files named exactly `.yaml`
+ * or `.yml` (hidden files with no extension). Symlinks are followed, so a linked config file loads (e.g. one kept in a
+ * dotfiles repo) and a link to a directory is skipped like a directory.
  */
 export function loadProjects(dir: string): Project[] {
-  const files = readdirSync(dir)
-    .filter((name) => name.endsWith(".yaml"))
-    .sort();
+  // Only regular files are considered, so directories, FIFOs and other special files are skipped whatever their name
+  // (a FIFO would block the read). An entry that can't be stat'ed (a broken symlink, a symlink loop, no permission) is
+  // kept, so reading it reports the problem in the combined error.
+  const isCandidate = (name: string): boolean => {
+    try {
+      return statSync(join(dir, name)).isFile();
+    } catch {
+      return true;
+    }
+  };
+  const names = readdirSync(dir).filter(isCandidate).sort();
+  // extname ignores a leading dot, so hidden files named just ".yaml" or ".yml" are neither loaded nor reported.
+  const extension = (name: string): string => extname(name).toLowerCase();
+  const files = names.filter((name) => extension(name) === ".yaml");
 
   const problems: string[] = [];
-  const loaded: { file: string; project: Project }[] = [];
+  for (const name of names.filter((n) => extension(n) === ".yml")) {
+    problems.push(`${name}: unsupported extension, rename it to .yaml`);
+  }
+  const loaded: Project[] = [];
+  const identities: { file: string; id?: string; repo?: string }[] = [];
 
   for (const file of files) {
     let raw: unknown;
     try {
-      raw = parse(readFileSync(join(dir, file), "utf8"));
+      const text = readRegularFile(join(dir, file));
+      if (text === undefined) {
+        // Was a regular file at scan time but not when opened: report it rather than skip it silently.
+        problems.push(`${file}: not a regular file when read, check the config directory`);
+        continue;
+      }
+      raw = parse(text);
     } catch (err) {
       problems.push(`${file}: could not read or parse YAML (${errorMessage(err).split("\n")[0]})`);
       continue;
+    }
+    // Validated with the same field schemas as the project, so only well-formed values are compared.
+    const fields = z.record(z.string(), z.unknown()).safeParse(raw);
+    if (fields.success) {
+      const id = idSchema.safeParse(fields.data.id);
+      const repo = repoSchema.safeParse(fields.data.repo);
+      identities.push({
+        file,
+        ...(id.success ? { id: id.data } : {}),
+        ...(repo.success ? { repo: repo.data.toLowerCase() } : {}),
+      });
     }
     const result = projectSchema.safeParse(raw);
     if (!result.success) {
@@ -71,13 +125,16 @@ export function loadProjects(dir: string): Project[] {
       }
       continue;
     }
-    loaded.push({ file, project: result.data });
+    loaded.push(result.data);
   }
 
   const seen = { id: new Map<string, string>(), repo: new Map<string, string>() };
-  for (const { file, project } of loaded) {
+  // Checked for every file that parsed, even ones with other schema errors, so duplicates surface alongside them.
+  for (const identity of identities) {
     for (const key of ["id", "repo"] as const) {
-      const value = key === "repo" ? project.repo.toLowerCase() : project.id;
+      const value = identity[key];
+      if (value === undefined) continue;
+      const file = identity.file;
       const first = seen[key].get(value);
       if (first === undefined) seen[key].set(value, file);
       else problems.push(`${file}: ${key}: duplicate of ${first}`);
@@ -87,5 +144,5 @@ export function loadProjects(dir: string): Project[] {
   if (problems.length > 0) {
     throw new Error(`Invalid project config:\n${problems.map((p) => `  - ${p}`).join("\n")}`);
   }
-  return loaded.map((l) => l.project);
+  return loaded;
 }

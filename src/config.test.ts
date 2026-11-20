@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -123,8 +124,95 @@ describe("loadProjects", () => {
   it("ignores files that are not .yaml", () => {
     write("widgets.yaml", widgets);
     write("notes.txt", "not yaml: [");
-    write("other.yml", "garbage");
     expect(loadProjects(dir)).toHaveLength(1);
+  });
+
+  it("reports .yml files instead of silently ignoring them", () => {
+    write("widgets.yaml", widgets);
+    write("gadgets.yml", gadgets);
+    expect(thrown(() => loadProjects(dir))).toContain("gadgets.yml: unsupported extension, rename it to .yaml");
+  });
+
+  it("treats extensions case-insensitively", () => {
+    write("widgets.YAML", widgets);
+    write("gadgets.YML", gadgets);
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("gadgets.YML: unsupported extension, rename it to .yaml");
+    expect(message).not.toContain("widgets.YAML");
+  });
+
+  it("loads upper- and mixed-case .yaml files", () => {
+    write("widgets.YAML", widgets);
+    write("gadgets.Yaml", gadgets);
+    expect(loadProjects(dir).map((p) => p.id)).toEqual(["gadgets", "widgets"]);
+  });
+
+  it("does not report a duplicate for an invalid id", () => {
+    write("a.yaml", "id: \"\"\nrepo: acme/widgets\nworkdir: /x\n");
+    write("b.yaml", "id: \"\"\nrepo: acme/gadgets\nworkdir: /y\n");
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("a.yaml: id");
+    expect(message).toContain("b.yaml: id");
+    expect(message).not.toContain("duplicate");
+  });
+
+  it("does not report a duplicate for an invalid repo", () => {
+    write("a.yaml", "id: a\nrepo: not-a-repo\nworkdir: /x\n");
+    write("b.yaml", "id: b\nrepo: not-a-repo\nworkdir: /y\n");
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("a.yaml: repo");
+    expect(message).toContain("b.yaml: repo");
+    expect(message).not.toContain("duplicate");
+  });
+
+  it("follows symlinks: a linked file loads, a linked directory is skipped", () => {
+    const outside = mkdtempSync(join(tmpdir(), "krispy-linked-"));
+    try {
+      writeFileSync(join(outside, "widgets.yaml"), widgets);
+      mkdirSync(join(outside, "nested"));
+      symlinkSync(join(outside, "widgets.yaml"), join(dir, "widgets.yaml"));
+      symlinkSync(join(outside, "nested"), join(dir, "nested.yaml"));
+      expect(loadProjects(dir)).toHaveLength(1);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("skips a FIFO named .yaml instead of blocking on it", () => {
+    execFileSync("mkfifo", [join(dir, "pipe.yaml")]);
+    write("widgets.yaml", widgets);
+    expect(loadProjects(dir)).toHaveLength(1);
+  });
+
+  it("ignores directories, whatever their extension", () => {
+    mkdirSync(join(dir, "nested.yaml"));
+    mkdirSync(join(dir, "nested.yml"));
+    write("widgets.yaml", widgets);
+    expect(loadProjects(dir)).toHaveLength(1);
+  });
+
+  it("reports an entry that can't be stat'ed in the combined error", () => {
+    symlinkSync("loop.yaml", join(dir, "loop.yaml"));
+    write("widgets.yaml", widgets);
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("Invalid project config");
+    expect(message).toContain("loop.yaml: could not read or parse YAML");
+  });
+
+  it("ignores hidden files named just .yaml or .yml", () => {
+    write(".yaml", "not: a project\n");
+    write(".yml", "not: a project\n");
+    write("widgets.yaml", widgets);
+    expect(loadProjects(dir)).toHaveLength(1);
+  });
+
+  it("reports duplicates alongside other validation errors", () => {
+    write("a.yaml", widgets);
+    write("b.yaml", "id: widgets\nrepo: acme/widgets\nworkdir: /y\ntracker: jira\n");
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("b.yaml: tracker");
+    expect(message).toContain("b.yaml: id: duplicate of a.yaml");
+    expect(message).toContain("b.yaml: repo: duplicate of a.yaml");
   });
 
   it("returns an empty list for an empty directory", () => {
