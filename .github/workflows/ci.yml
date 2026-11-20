@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # PRs share one group per branch, so a new push supersedes the old run.
+  # Pushes to main get one group per commit: a shared group would keep only one
+  # pending run, so quick successive merges could drop a commit's result.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans full history
+          persist-credentials: false # later steps run third-party code and don't need the token
+
+      # Runs first so a leak is reported even when the checks below fail.
+      # Must match .pre-commit-config.yaml (checked below). The tarball is checked against a pinned hash.
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        # Downloaded to RUNNER_TEMP so the checkout stays clean for lint and test.
+        run: |
+          # The rev of the gitleaks repo entry, whatever the indentation or quoting.
+          precommit=$(awk '/repo:.*github\.com\/gitleaks\/gitleaks/ {f=1; next} f && /rev:/ {sub(/.*rev:/, ""); gsub(/[[:space:]"\047]/, ""); print; exit}' .pre-commit-config.yaml)
+          [ "$precommit" = "v${GITLEAKS_VERSION}" ] \
+            || { echo "::error::GITLEAKS_VERSION v${GITLEAKS_VERSION} does not match .pre-commit-config.yaml (${precommit:-not found})"; exit 1; }
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf gitleaks.tar.gz gitleaks
+          # Self-test: a token-shaped string made at run time (so it never sits in the repo) must be caught.
+          mkdir leak-test
+          echo "token = ghp_$(head -c 512 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 36)" > leak-test/config.txt
+          # A distinct exit code, so a gitleaks that fails to run (exit 1) can't pass as a catch.
+          status=0
+          ./gitleaks dir --redact --no-banner --exit-code 42 leak-test || status=$?
+          [ "$status" -eq 42 ] \
+            || { echo "::error::gitleaks self-test expected exit 42 for the planted token, got ${status}"; exit 1; }
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" git --redact --exit-code 1 .
+
+      # No `version`: pnpm/action-setup reads `packageManager` from package.json.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
