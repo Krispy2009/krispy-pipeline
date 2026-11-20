@@ -46,8 +46,9 @@ function errorMessage(err: unknown): string {
 }
 
 /**
- * Loads every `*.yaml` file in `dir` (`.yml` is rejected, not ignored). Throws one error listing every file and
- * field that failed; nothing is returned unless every file is valid.
+ * Loads every `*.yaml` file in `dir`. Extensions are matched case-insensitively, so `widgets.YAML` loads too, and
+ * `.yml` in any case is rejected, not ignored. Throws one error listing every file and field that failed, including
+ * duplicate `id` or `repo` across files; nothing is returned unless every file is valid.
  * Messages carry paths and schema messages only, never parsed values.
  */
 export function loadProjects(dir: string): Project[] {
@@ -93,7 +94,7 @@ export function loadProjects(dir: string): Project[] {
   }
 
   const seen = { id: new Map<string, string>(), repo: new Map<string, string>() };
-  // Checked on the raw values so duplicates surface alongside other errors, not after them.
+  // Checked for every file that parsed, even ones with other schema errors, so duplicates surface alongside them.
   for (const identity of identities) {
     for (const key of ["id", "repo"] as const) {
       const value = identity[key];
