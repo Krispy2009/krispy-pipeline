@@ -1,6 +1,6 @@
 # 0005 — A human merges, always
 
-**Status:** Accepted, 2026-11-18
+**Status:** Superseded by [0007](0007-supervised-merge.md)
 
 ## Decision
 
