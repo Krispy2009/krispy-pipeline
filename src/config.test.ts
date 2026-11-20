@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -165,6 +166,12 @@ describe("loadProjects", () => {
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  it.skipIf(process.platform === "win32")("skips a FIFO named .yaml instead of blocking on it", () => {
+    execFileSync("mkfifo", [join(dir, "pipe.yaml")]);
+    write("widgets.yaml", widgets);
+    expect(loadProjects(dir)).toHaveLength(1);
   });
 
   it("ignores directories, whatever their extension", () => {

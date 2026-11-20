@@ -51,23 +51,22 @@ function errorMessage(err: unknown): string {
  * duplicate `id` or `repo` across files; nothing is returned unless every file is valid.
  * Messages carry paths and schema messages only, never parsed values.
  *
- * Deliberately ignored: subdirectories, and files named exactly `.yaml` or `.yml` (hidden files with no extension).
- * Symlinks are followed, so a linked config file loads (e.g. one kept in a dotfiles repo) and a link to a directory
- * is skipped like a directory.
+ * Deliberately ignored: subdirectories and other non-regular files (such as FIFOs), and files named exactly `.yaml`
+ * or `.yml` (hidden files with no extension). Symlinks are followed, so a linked config file loads (e.g. one kept in a
+ * dotfiles repo) and a link to a directory is skipped like a directory.
  */
 export function loadProjects(dir: string): Project[] {
-  // Directories are skipped whatever their name. Anything else, including an entry that can't be stat'ed (a broken
-  // symlink, a symlink loop, no permission), is kept, so reading it reports the problem in the combined error.
-  const isDirectory = (name: string): boolean => {
+  // Only regular files are considered, so directories, FIFOs and other special files are skipped whatever their name
+  // (a FIFO would block the read). An entry that can't be stat'ed (a broken symlink, a symlink loop, no permission) is
+  // kept, so reading it reports the problem in the combined error.
+  const isCandidate = (name: string): boolean => {
     try {
-      return statSync(join(dir, name)).isDirectory();
+      return statSync(join(dir, name)).isFile();
     } catch {
-      return false;
+      return true;
     }
   };
-  const names = readdirSync(dir)
-    .filter((name) => !isDirectory(name))
-    .sort();
+  const names = readdirSync(dir).filter(isCandidate).sort();
   // extname ignores a leading dot, so hidden files named just ".yaml" or ".yml" are neither loaded nor reported.
   const extension = (name: string): string => extname(name).toLowerCase();
   const files = names.filter((name) => extension(name) === ".yaml");
