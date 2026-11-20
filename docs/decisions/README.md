@@ -11,3 +11,4 @@ New decision: copy the shape of an existing ADR, take the next number, and set s
 | [0003](0003-trust-by-identity.md) | Trust by numeric identity, never by text | Accepted |
 | [0004](0004-ticket-is-the-contract.md) | The issue body is the contract | Accepted |
 | [0005](0005-human-merges.md) | A human merges, always | Accepted |
+| [0006](0006-ci-without-secrets.md) | CI on GitHub Actions, without secrets | Accepted |
