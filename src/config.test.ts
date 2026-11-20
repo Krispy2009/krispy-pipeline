@@ -147,6 +147,15 @@ describe("loadProjects", () => {
     expect(loadProjects(dir).map((p) => p.id)).toEqual(["gadgets", "widgets"]);
   });
 
+  it("does not report a duplicate for an invalid id", () => {
+    write("a.yaml", "id: \"\"\nrepo: acme/widgets\nworkdir: /x\n");
+    write("b.yaml", "id: \"\"\nrepo: acme/gadgets\nworkdir: /y\n");
+    const message = thrown(() => loadProjects(dir));
+    expect(message).toContain("a.yaml: id");
+    expect(message).toContain("b.yaml: id");
+    expect(message).not.toContain("duplicate");
+  });
+
   it("does not report a duplicate for an invalid repo", () => {
     write("a.yaml", "id: a\nrepo: not-a-repo\nworkdir: /x\n");
     write("b.yaml", "id: b\nrepo: not-a-repo\nworkdir: /y\n");

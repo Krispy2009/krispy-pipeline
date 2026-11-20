@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join } from "node:path";
 import { parse } from "yaml";
@@ -55,6 +55,20 @@ function errorMessage(err: unknown): string {
  * or `.yml` (hidden files with no extension). Symlinks are followed, so a linked config file loads (e.g. one kept in a
  * dotfiles repo) and a link to a directory is skipped like a directory.
  */
+/**
+ * Reads `path` only if it is a regular file at the moment it is opened, else returns `undefined`. Opening non-blocking
+ * and checking the open descriptor means an entry swapped for a FIFO after the directory scan can't block the read.
+ */
+function readRegularFile(path: string): string | undefined {
+  // O_NONBLOCK is undefined on Windows, where there are no FIFOs to guard against.
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  try {
+    return fstatSync(fd).isFile() ? readFileSync(fd, "utf8") : undefined;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function loadProjects(dir: string): Project[] {
   // Only regular files are considered, so directories, FIFOs and other special files are skipped whatever their name
   // (a FIFO would block the read). An entry that can't be stat'ed (a broken symlink, a symlink loop, no permission) is
@@ -81,7 +95,9 @@ export function loadProjects(dir: string): Project[] {
   for (const file of files) {
     let raw: unknown;
     try {
-      raw = parse(readFileSync(join(dir, file), "utf8"));
+      const text = readRegularFile(join(dir, file));
+      if (text === undefined) continue; // no longer a regular file: skipped, like at scan time
+      raw = parse(text);
     } catch (err) {
       problems.push(`${file}: could not read or parse YAML (${errorMessage(err).split("\n")[0]})`);
       continue;
