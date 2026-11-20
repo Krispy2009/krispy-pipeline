@@ -1,5 +1,7 @@
 # krispy-pipeline
 
+[![CI](https://github.com/Krispy2009/krispy-pipeline/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Krispy2009/krispy-pipeline/actions/workflows/ci.yml)
+
 An agentic ticket-to-PR pipeline for a team of one. You label a GitHub issue, a builder bot plans it, and you approve the plan. The builder then builds it, a reviewer bot grades the PR against the issue's acceptance criteria, and the two loop until it's clean. You merge.
 
 > **Status:** early. Today this repo holds the interactive Claude Code commands (`claude/`) that the bots will run. The launcher package is scaffolded (`src/`), with no launcher logic yet.
