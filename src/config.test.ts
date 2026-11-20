@@ -150,7 +150,14 @@ describe("loadProjects", () => {
     write("b.yaml", "id: b\nrepo: not-a-repo\nworkdir: /y\n");
     const message = thrown(() => loadProjects(dir));
     expect(message).toContain("a.yaml: repo");
+    expect(message).toContain("b.yaml: repo");
     expect(message).not.toContain("duplicate");
+  });
+
+  it("ignores a hidden file named just .yaml", () => {
+    write(".yaml", "not: a project\n");
+    write("widgets.yaml", widgets);
+    expect(loadProjects(dir)).toHaveLength(1);
   });
 
   it("reports duplicates alongside other validation errors", () => {

@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 
@@ -53,7 +53,8 @@ function errorMessage(err: unknown): string {
  */
 export function loadProjects(dir: string): Project[] {
   const names = readdirSync(dir).sort();
-  const extension = (name: string): string => name.toLowerCase().slice(name.lastIndexOf("."));
+  // extname ignores a leading dot, so a hidden file named just ".yaml" is not loaded.
+  const extension = (name: string): string => extname(name).toLowerCase();
   const files = names.filter((name) => extension(name) === ".yaml");
 
   const problems: string[] = [];
