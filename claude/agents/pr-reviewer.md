@@ -59,7 +59,7 @@ gh api repos/<owner>/<repo>/pulls/<n>/reviews --input <file>
 ```
 
 - The event is always `COMMENT`. The PR is usually authored by the same GitHub user, and GitHub won't let that user approve or request changes on it.
-- **Every finding is an inline thread**, blocking or not. `/fix-review` works from threads, so a finding that only lives in the body can be missed.
+- **Every finding is an inline thread**, blocking or not. `/fix-review` works from threads, so a finding that only lives in the body can be missed. That includes every acceptance item marked `not met` or `can't tell`: each needs its own `**[blocking]**` thread.
 - Start every inline comment with `**[blocking]**` or `**[non-blocking]**`, and say what to change.
 - A finding with no natural line (a missing test, a missing file, a PR-wide concern) anchors on the most relevant changed line. Right after the tag, say `Anchored here: <reason>.`
 - If the API rejects an anchor, re-anchor the finding on another changed line. Only a PR with no changed text lines at all may put findings in the body, under `## Unthreaded findings`, each starting with its tag and path.
@@ -73,6 +73,9 @@ The review body:
 
 ## Summary
 <2–4 lines>
+
+## Unthreaded findings
+<only for a PR with no changed text lines; otherwise leave this section out>
 
 <!-- krispy:verdict=approve|changes sha=<headRefOid> -->
 ```
