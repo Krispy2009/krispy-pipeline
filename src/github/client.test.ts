@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createGitHubClient, GITHUB_API } from "./client.js";
+import { createGitHubClient, GITHUB_API, MAX_ETAG_ENTRIES } from "./client.js";
 import { GitHubApiError, GitHubResponseError, RateLimitedError, redact } from "./errors.js";
 import type { TokenProvider } from "./token.js";
 
@@ -81,7 +81,7 @@ describe("createGitHubClient", () => {
     expect(header(calls[0], "authorization")).toBe(`Bearer ${TOKEN}`);
   });
 
-  it.each(["repos/acme/widgets", "//evil.example/x", "/\\evil.example", "https://evil.example/x"])(
+  it.each(["repos/acme/widgets", "//evil.example/x", "/\\evil.example", "https://evil.example/x", "/\t/evil.example/x"])(
     "rejects path %s before asking for a token",
     async (path) => {
       let asked = false;
@@ -128,6 +128,33 @@ describe("createGitHubClient", () => {
       expect((err as GitHubApiError).status).toBe(304);
     });
 
+    it("evicts the oldest entry past MAX_ETAG_ENTRIES", async () => {
+      const paths = Array.from({ length: MAX_ETAG_ENTRIES + 1 }, (_, i) => `/repos/acme/widgets/issues/${i}`);
+      const { fetch, calls } = stub(
+        ...paths.map((_, i) => json(issue, 200, { etag: `"e${i}"` })),
+        json(issue),
+        json(issue),
+      );
+      const client = createGitHubClient({ tokens, fetch });
+      for (const path of paths) await client.get(path, issueSchema);
+      await client.get(paths[0] ?? "", issueSchema);
+      await client.get(paths[MAX_ETAG_ENTRIES] ?? "", issueSchema);
+      expect(header(calls[paths.length], "if-none-match")).toBeNull();
+      expect(header(calls[paths.length + 1], "if-none-match")).toBe(`"e${MAX_ETAG_ENTRIES}"`);
+    });
+
+    it("cancels the body of a 304", async () => {
+      let cancelled = false;
+      const body = new ReadableStream({ cancel: () => void (cancelled = true) });
+      // A real 304 can't carry a body in the Response constructor, so a 200 is relabelled.
+      const notModified = Object.defineProperty(new Response(body), "status", { value: 304 });
+      const { fetch } = stub(json(issue, 200, { etag: '"abc"' }), notModified);
+      const client = createGitHubClient({ tokens, fetch });
+      await client.get(PATH, issueSchema);
+      await expect(client.get(PATH, issueSchema)).resolves.toEqual({ data: issue, unchanged: true });
+      expect(cancelled).toBe(true);
+    });
+
     it("does not cache a body that failed validation", async () => {
       const { fetch, calls } = stub(json({ number: "x" }, 200, { etag: '"bad"' }), json(issue));
       const client = createGitHubClient({ tokens, fetch });
@@ -166,6 +193,28 @@ describe("createGitHubClient", () => {
       expect((err as RateLimitedError).resetAt).toEqual(new Date(NOW + 5_000));
     });
 
+    it("bare 429 with no headers backs off 60 s", async () => {
+      const { fetch } = stub(json({}, 429));
+      const err = await caught(createGitHubClient({ tokens, fetch, now: () => NOW }).get(PATH, issueSchema));
+      expect(err).toBeInstanceOf(RateLimitedError);
+      expect((err as RateLimitedError).resetAt).toEqual(new Date(NOW + 60_000));
+    });
+
+    it("403 with x-ratelimit-remaining 0 but no reset backs off 60 s", async () => {
+      const { fetch } = stub(json({}, 403, { "x-ratelimit-remaining": "0" }));
+      const err = await caught(createGitHubClient({ tokens, fetch, now: () => NOW }).get(PATH, issueSchema));
+      expect(err).toBeInstanceOf(RateLimitedError);
+      expect((err as RateLimitedError).resetAt).toEqual(new Date(NOW + 60_000));
+    });
+
+    it("cancels the body of a rate-limited response", async () => {
+      let cancelled = false;
+      const body = new ReadableStream({ cancel: () => void (cancelled = true) });
+      const { fetch } = stub(new Response(body, { status: 429, headers: { "retry-after": "1" } }));
+      await expect(createGitHubClient({ tokens, fetch }).get(PATH, issueSchema)).rejects.toBeInstanceOf(RateLimitedError);
+      expect(cancelled).toBe(true);
+    });
+
     it("403 without rate-limit headers is a plain GitHubApiError", async () => {
       const { fetch } = stub(json({ message: "Resource not accessible by integration" }, 403));
       const err = await caught(createGitHubClient({ tokens, fetch }).get(PATH, issueSchema));
@@ -194,6 +243,25 @@ describe("createGitHubClient", () => {
       const { fetch } = stub(response);
       const err = await caught(createGitHubClient({ tokens, fetch }).get(PATH, issueSchema));
       expect(err).toBeInstanceOf(GitHubApiError);
+      expectNoToken(err);
+    });
+
+    it("from a GitHub error message that echoes the token", async () => {
+      const { fetch } = stub(json({ message: `bad token ${TOKEN}` }, 401));
+      const err = await caught(createGitHubClient({ tokens, fetch }).get(PATH, issueSchema));
+      expect(err.message).toBe(`GET ${PATH}: HTTP 401 (bad token [redacted])`);
+      expectNoToken(err);
+    });
+
+    it("from a body stream that fails mid-read", async () => {
+      const body = new ReadableStream({
+        pull: (controller) => controller.error(new Error(`socket reset, Authorization: Bearer ${TOKEN}`)),
+      });
+      const { fetch } = stub(new Response(body, { status: 200 }));
+      const err = await caught(createGitHubClient({ tokens, fetch }).get(PATH, issueSchema));
+      expect(err).toBeInstanceOf(GitHubApiError);
+      expect(err.message).toBe(`GET ${PATH}: could not read the response body`);
+      expect(err.cause).toBeUndefined();
       expectNoToken(err);
     });
 

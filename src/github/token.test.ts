@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GhCliTokenProvider, TokenUnavailableError, type CommandRunner } from "./token.js";
+import { GhCliTokenProvider, scrubbedEnv, TokenUnavailableError, type CommandRunner } from "./token.js";
 
 const TOKEN = "gho_FAKEtoken0000000000000000000000000000";
 
@@ -12,6 +12,27 @@ describe("GhCliTokenProvider", () => {
     };
     await expect(new GhCliTokenProvider(run).getToken()).resolves.toBe(TOKEN);
     expect(calls).toEqual([{ command: "gh", args: ["auth", "token"] }]);
+  });
+
+  it("runs gh with an env scrubbed of token, host and config overrides", async () => {
+    let seen: NodeJS.ProcessEnv | undefined;
+    const run: CommandRunner = async (_command, _args, env) => {
+      seen = env;
+      return { stdout: TOKEN };
+    };
+    const env = {
+      PATH: "/usr/bin",
+      HOME: "/home/acme",
+      GH_TOKEN: "env-token",
+      GITHUB_TOKEN: "env-token",
+      GH_ENTERPRISE_TOKEN: "env-token",
+      GITHUB_ENTERPRISE_TOKEN: "env-token",
+      GH_HOST: "ghe.acme.example",
+      GH_CONFIG_DIR: "/tmp/elsewhere",
+      gh_token: "env-token",
+    };
+    await new GhCliTokenProvider(run, env).getToken();
+    expect(seen).toEqual({ PATH: "/usr/bin", HOME: "/home/acme" });
   });
 
   it("asks gh again on every call", async () => {
@@ -41,5 +62,13 @@ describe("GhCliTokenProvider", () => {
     const e = err as Error;
     expect(`${e.message} ${e.stack ?? ""} ${String(e.cause)}`).not.toContain(TOKEN);
     expect(e.cause).toBeUndefined();
+  });
+});
+
+describe("scrubbedEnv", () => {
+  it("drops any GH_/GITHUB_ *TOKEN variable and leaves the input untouched", () => {
+    const env = { GITHUB_PAT_TOKEN: "x", GH_FOO_TOKEN: "x", GH_DEBUG: "1", LANG: "C" };
+    expect(scrubbedEnv(env)).toEqual({ GH_DEBUG: "1", LANG: "C" });
+    expect(env.GITHUB_PAT_TOKEN).toBe("x");
   });
 });
