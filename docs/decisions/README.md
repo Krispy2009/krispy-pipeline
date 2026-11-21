@@ -2,8 +2,6 @@
 
 These are binding for humans and agents. A plan that contradicts one must say so and ask, and the reviewer flags any unflagged contradiction.
 
-A PR that only adds or amends ADRs doesn't need a linked issue, since the decision is the deliverable (0007 merged this way).
-
 New decision: copy the shape of an existing ADR, take the next number, and set status to `Accepted` or `Superseded by NNNN`.
 
 | # | Decision | Status |
