@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { GitHubApiError, GitHubResponseError, RateLimitedError, redact, type RequestInfo } from "./errors.js";
+import { GitHubApiError, GitHubResponseError, RateLimitedError, redact, stripControl, type RequestInfo } from "./errors.js";
 import type { TokenProvider } from "./token.js";
 
 export const GITHUB_API = "https://api.github.com";
@@ -61,13 +61,23 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
           Authorization: `Bearer ${token}`,
         },
         // Never follow a redirect: the token must not be re-sent anywhere but the URL checked by resolve().
-        redirect: "error",
+        // "manual" (not "error") so a 3xx arrives as a response and can be reported as what it is.
+        redirect: "manual",
         ...(body !== undefined ? { body } : {}),
       });
+      if (isRedirect(response)) {
+        await discard(response);
+        throw new GitHubApiError(
+          `HTTP ${response.status} redirect refused (the repository may have been renamed or transferred)`,
+          request,
+          response.status,
+        );
+      }
       return { response, token };
     } catch (err) {
+      if (err instanceof GitHubApiError) throw err;
       const message = err instanceof Error ? err.message : "unknown error";
-      throw new GitHubApiError(`request failed (${redact(message, [token])})`, request);
+      throw new GitHubApiError(`request failed (${stripControl(redact(message, [token]))})`, request);
     }
   }
 
@@ -77,7 +87,13 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
       await discard(response);
       throw new RateLimitedError(request, response.status, resetAt);
     }
-    const detail = redact(await errorDetail(response), [token]);
+    const message = await errorMessage(response);
+    if (response.status === 403 && /secondary rate limit/i.test(message)) {
+      // GitHub: a secondary limit with neither header means "wait at least one minute".
+      throw new RateLimitedError(request, 403, new Date(now() + DEFAULT_BACKOFF_MS));
+    }
+    const shown = redact(message, [token]);
+    const detail = shown === "" ? "" : ` (${shown})`;
     throw new GitHubApiError(`HTTP ${response.status}${detail}`, request, response.status);
   }
 
@@ -148,6 +164,11 @@ export function rateLimitReset(response: Response, nowMs: number): Date | undefi
   return response.status === 429 ? new Date(nowMs + DEFAULT_BACKOFF_MS) : undefined;
 }
 
+/** A 3xx other than 304, or the opaque response a browser-style fetch gives for a refused redirect. */
+function isRedirect(response: Response): boolean {
+  return response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400 && response.status !== 304);
+}
+
 /** Releases the connection when the body is not needed. */
 async function discard(response: Response): Promise<void> {
   try {
@@ -179,13 +200,15 @@ function validate<T>(body: unknown, schema: z.ZodType<T>, request: RequestInfo, 
   return result.data;
 }
 
-/** GitHub's own `message` field, shortened. Never the raw body, which could hold anything. */
-async function errorDetail(response: Response): Promise<string> {
+/**
+ * GitHub's own `message` field, with control characters removed and shortened, or "" if there is none. Never the raw
+ * body, which could hold anything.
+ */
+async function errorMessage(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as unknown;
     if (typeof body === "object" && body !== null && "message" in body && typeof body.message === "string") {
-      const message = body.message.replace(/\s+/g, " ").slice(0, MAX_MESSAGE_LENGTH);
-      return message === "" ? "" : ` (${message})`;
+      return stripControl(body.message).replace(/\s+/g, " ").trim().slice(0, MAX_MESSAGE_LENGTH);
     }
   } catch {
     // Not JSON: the status alone is enough.

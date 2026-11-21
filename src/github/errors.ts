@@ -11,6 +11,11 @@ export function redact(text: string, secrets: readonly string[]): string {
   return out;
 }
 
+/** Replaces control and format characters (ANSI escapes, bidi overrides, …) in untrusted text with a space. */
+export function stripControl(text: string): string {
+  return text.replace(/[\p{Cc}\p{Cf}]/gu, " ");
+}
+
 export interface RequestInfo {
   method: string;
   path: string;
@@ -55,7 +60,7 @@ export class GitHubResponseError extends GitHubApiError {
 
   static fromZod(error: z.ZodError, request: RequestInfo, status: number): GitHubResponseError {
     const fields = error.issues.map((issue) => {
-      const field = issue.path.length > 0 ? issue.path.join(".") : "(root)";
+      const field = issue.path.length > 0 ? stripControl(issue.path.map(String).join(".")).slice(0, 100) : "(root)";
       return `${field}: ${issue.code}`;
     });
     return new GitHubResponseError(`unexpected response shape (${fields.join("; ")})`, request, status);

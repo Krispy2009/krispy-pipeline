@@ -29,6 +29,7 @@ describe("GhCliTokenProvider", () => {
       GITHUB_ENTERPRISE_TOKEN: "env-token",
       GH_HOST: "ghe.acme.example",
       GH_CONFIG_DIR: "/tmp/elsewhere",
+      XDG_CONFIG_HOME: "/tmp/elsewhere",
       gh_token: "env-token",
     };
     await new GhCliTokenProvider(run, env).getToken();

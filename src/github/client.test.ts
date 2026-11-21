@@ -98,17 +98,46 @@ describe("createGitHubClient", () => {
     // Behaves like a fetch that would follow a 301 to another origin with the same headers, unless told not to.
     const following = (async (input: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(input), init: init ?? {} });
-      if (init?.redirect === "error") throw new TypeError("fetch failed: unexpected redirect");
+      if (init?.redirect === "manual") {
+        return new Response(null, { status: 301, headers: { location: "https://evil.example/moved" } });
+      }
       calls.push({ url: "https://evil.example/moved", init: init ?? {} });
       return json(issue);
     }) as typeof fetch;
     const client = createGitHubClient({ tokens, fetch: following });
     const err = await caught(client.get(PATH, issueSchema));
     expect(err).toBeInstanceOf(GitHubApiError);
+    expect((err as GitHubApiError).status).toBe(301);
+    expect(err.message).toBe(
+      `GET ${PATH}: HTTP 301 redirect refused (the repository may have been renamed or transferred)`,
+    );
     expect(calls.map((c) => c.url)).toEqual([`${GITHUB_API}${PATH}`]);
     await caught(client.post(PATH, {}, z.unknown()));
-    expect(calls.every((c) => c.init.redirect === "error")).toBe(true);
+    expect(calls.every((c) => c.init.redirect === "manual")).toBe(true);
     expectNoToken(err);
+  });
+
+  it("treats an opaque redirect response as a refused redirect", async () => {
+    const opaque = Object.defineProperty(new Response(null), "type", { value: "opaqueredirect" });
+    const { fetch } = stub(opaque);
+    const err = await caught(createGitHubClient({ tokens, fetch }).get(PATH, issueSchema));
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.message).toContain("redirect refused");
+  });
+
+  it("strips control characters from GitHub's message and from schema paths", async () => {
+    const { fetch } = stub(
+      json({ message: "bad\u001b[31m red\u202e text" }, 422),
+      json({ number: 7, title: "x", "\u001b[2Jkey": 1 }),
+    );
+    const client = createGitHubClient({ tokens, fetch });
+    const err = await caught(client.get(PATH, issueSchema));
+    expect(err.message).toBe(`GET ${PATH}: HTTP 422 (bad [31m red text)`);
+    const strict = z.object({ number: z.number(), title: z.string() }).strict();
+    const shape = await caught(client.get("/repos/acme/widgets/issues/9", strict));
+    expect(shape).toBeInstanceOf(GitHubResponseError);
+    // eslint-disable-next-line no-control-regex
+    expect(shape.message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
   });
 
   describe("ETags", () => {
@@ -227,6 +256,13 @@ describe("createGitHubClient", () => {
       const err = await caught(createGitHubClient({ tokens, fetch, now: () => NOW }).get(PATH, issueSchema));
       expect(err).toBeInstanceOf(RateLimitedError);
       expect((err as RateLimitedError).resetAt).toEqual(new Date(NOW + 5_000));
+    });
+
+    it("403 secondary rate limit with neither header backs off 60 s", async () => {
+      const { fetch } = stub(json({ message: "You have exceeded a secondary rate limit." }, 403));
+      const err = await caught(createGitHubClient({ tokens, fetch, now: () => NOW }).get(PATH, issueSchema));
+      expect(err).toBeInstanceOf(RateLimitedError);
+      expect((err as RateLimitedError).resetAt).toEqual(new Date(NOW + 60_000));
     });
 
     it("bare 429 with no headers backs off 60 s", async () => {

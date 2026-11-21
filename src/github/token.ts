@@ -23,7 +23,9 @@ export type CommandRunner = (
 
 /**
  * Variables that would make `gh auth token` answer from somewhere other than its keyring entry for github.com:
- * a token in the environment, another host, or another config directory.
+ * a token in the environment, another host, or another config directory. `XDG_CONFIG_HOME` is on the list because
+ * gh uses `$XDG_CONFIG_HOME/gh` when `GH_CONFIG_DIR` is unset. (`AppData` is left alone: removing it breaks gh on
+ * Windows, and it is a per-user OS location rather than a free-form override.)
  */
 const OVERRIDE_VARS = new Set([
   "GH_TOKEN",
@@ -32,6 +34,7 @@ const OVERRIDE_VARS = new Set([
   "GITHUB_ENTERPRISE_TOKEN",
   "GH_HOST",
   "GH_CONFIG_DIR",
+  "XDG_CONFIG_HOME",
 ]);
 
 /** A copy of `env` without anything that lets `gh` take its token from the environment (CLAUDE.md, ADR 0002). */
@@ -56,6 +59,10 @@ const defaultRunner: CommandRunner = async (command, args, env) => {
 /**
  * Reads the token the signed-in `gh` CLI keeps in the OS keyring. Asked on every call, so a `gh auth refresh` is
  * picked up without a restart.
+ *
+ * Assumption: gh was logged in normally, so it stores the token in the keyring. After `gh auth login
+ * --insecure-storage`, gh keeps it in plain text in its `hosts.yml` instead, and this provider cannot tell the
+ * difference. That setup is not supported (ADR 0002); log in again without the flag.
  */
 export class GhCliTokenProvider implements TokenProvider {
   readonly #run: CommandRunner;
