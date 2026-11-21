@@ -1,6 +1,6 @@
 # 0002 — Public engine, private config
 
-**Status:** Accepted, 2026-11-18
+**Status:** Accepted, 2026-11-18. Amended by [0008](0008-pluggable-sources-and-runners.md): a runner may keep secrets outside the keyring only after its own ADR.
 
 ## Context
 
