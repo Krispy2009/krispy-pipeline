@@ -93,6 +93,24 @@ describe("createGitHubClient", () => {
     },
   );
 
+  it("refuses to follow redirects, so the token is never re-sent to another host", async () => {
+    const calls: Call[] = [];
+    // Behaves like a fetch that would follow a 301 to another origin with the same headers, unless told not to.
+    const following = (async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      if (init?.redirect === "error") throw new TypeError("fetch failed: unexpected redirect");
+      calls.push({ url: "https://evil.example/moved", init: init ?? {} });
+      return json(issue);
+    }) as typeof fetch;
+    const client = createGitHubClient({ tokens, fetch: following });
+    const err = await caught(client.get(PATH, issueSchema));
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(calls.map((c) => c.url)).toEqual([`${GITHUB_API}${PATH}`]);
+    await caught(client.post(PATH, {}, z.unknown()));
+    expect(calls.every((c) => c.init.redirect === "error")).toBe(true);
+    expectNoToken(err);
+  });
+
   describe("ETags", () => {
     it("second get sends If-None-Match with the stored ETag", async () => {
       const { fetch, calls } = stub(json(issue, 200, { etag: '"abc"' }), new Response(null, { status: 304 }));
@@ -141,6 +159,24 @@ describe("createGitHubClient", () => {
       await client.get(paths[MAX_ETAG_ENTRIES] ?? "", issueSchema);
       expect(header(calls[paths.length], "if-none-match")).toBeNull();
       expect(header(calls[paths.length + 1], "if-none-match")).toBe(`"e${MAX_ETAG_ENTRIES}"`);
+    });
+
+    it("a 304 hit counts as recent use for eviction", async () => {
+      const paths = Array.from({ length: MAX_ETAG_ENTRIES + 1 }, (_, i) => `/repos/acme/widgets/issues/${i}`);
+      const { fetch, calls } = stub(
+        ...paths.slice(0, MAX_ETAG_ENTRIES).map((_, i) => json(issue, 200, { etag: `"e${i}"` })),
+        new Response(null, { status: 304 }),
+        json(issue, 200, { etag: `"e${MAX_ETAG_ENTRIES}"` }),
+        new Response(null, { status: 304 }),
+        json(issue),
+      );
+      const client = createGitHubClient({ tokens, fetch });
+      for (const path of paths.slice(0, MAX_ETAG_ENTRIES)) await client.get(path, issueSchema);
+      await client.get(paths[0] ?? "", issueSchema); // 304: path 0 is now the most recent
+      await client.get(paths[MAX_ETAG_ENTRIES] ?? "", issueSchema); // evicts path 1, not path 0
+      await expect(client.get(paths[0] ?? "", issueSchema)).resolves.toMatchObject({ unchanged: true });
+      await client.get(paths[1] ?? "", issueSchema);
+      expect(header(calls.at(-1), "if-none-match")).toBeNull();
     });
 
     it("cancels the body of a 304", async () => {

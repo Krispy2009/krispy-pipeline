@@ -60,6 +60,8 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
           ...headers,
           Authorization: `Bearer ${token}`,
         },
+        // Never follow a redirect: the token must not be re-sent anywhere but the URL checked by resolve().
+        redirect: "error",
         ...(body !== undefined ? { body } : {}),
       });
       return { response, token };
@@ -88,7 +90,11 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
         await discard(response);
         // Fail closed: a 304 we never asked for has no body to return.
         if (cached === undefined) throw new GitHubApiError("HTTP 304 without a cached response", request, 304);
-        return { data: validate(cached.body, schema, request, 304), unchanged: true };
+        const data = validate(cached.body, schema, request, 304);
+        // Re-inserted so eviction drops the least recently used path, not the one unchanged longest.
+        etags.delete(path);
+        etags.set(path, cached);
+        return { data, unchanged: true };
       }
       if (!response.ok) return fail(request, response, token);
       const body = await readJson(response, request);
