@@ -1,6 +1,6 @@
 # 0001 — Poll GitHub; no inbound connections
 
-**Status:** Accepted, 2026-11-18
+**Status:** Accepted, 2026-11-18. Superseded by [0008](0008-pluggable-sources-and-runners.md).
 
 ## Context
 
