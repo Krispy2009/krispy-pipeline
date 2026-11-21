@@ -87,13 +87,12 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
       await discard(response);
       throw new RateLimitedError(request, response.status, resetAt);
     }
-    const message = await errorMessage(response);
+    const message = await errorMessage(response, token);
     if (response.status === 403 && /secondary rate limit/i.test(message)) {
       // GitHub: a secondary limit with neither header means "wait at least one minute".
       throw new RateLimitedError(request, 403, new Date(now() + DEFAULT_BACKOFF_MS));
     }
-    const shown = redact(message, [token]);
-    const detail = shown === "" ? "" : ` (${shown})`;
+    const detail = message === "" ? "" : ` (${message})`;
     throw new GitHubApiError(`HTTP ${response.status}${detail}`, request, response.status);
   }
 
@@ -153,12 +152,12 @@ export function rateLimitReset(response: Response, nowMs: number): Date | undefi
   const headers = response.headers;
   if (headers.get("x-ratelimit-remaining") === "0") {
     const reset = Number(headers.get("x-ratelimit-reset"));
-    return new Date(Number.isFinite(reset) && reset > 0 ? reset * 1000 : nowMs + DEFAULT_BACKOFF_MS);
+    return validDate(reset > 0 ? reset * 1000 : NaN, nowMs);
   }
   const retryAfter = headers.get("retry-after");
   if (retryAfter !== null) {
     const seconds = Number(retryAfter);
-    return new Date(nowMs + (Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : DEFAULT_BACKOFF_MS));
+    return validDate(seconds >= 0 ? nowMs + seconds * 1000 : NaN, nowMs);
   }
   // 429 always means "slow down", even without headers. A bare 403 is a permission error.
   return response.status === 429 ? new Date(nowMs + DEFAULT_BACKOFF_MS) : undefined;
@@ -167,6 +166,12 @@ export function rateLimitReset(response: Response, nowMs: number): Date | undefi
 /** A 3xx other than 304, or the opaque response a browser-style fetch gives for a refused redirect. */
 function isRedirect(response: Response): boolean {
   return response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400 && response.status !== 304);
+}
+
+/** `ms` as a Date, or now + the default back-off when it is not a usable time (NaN, infinite, or past year 275760). */
+function validDate(ms: number, nowMs: number): Date {
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date : new Date(nowMs + DEFAULT_BACKOFF_MS);
 }
 
 /** Releases the connection when the body is not needed. */
@@ -201,14 +206,14 @@ function validate<T>(body: unknown, schema: z.ZodType<T>, request: RequestInfo, 
 }
 
 /**
- * GitHub's own `message` field, with control characters removed and shortened, or "" if there is none. Never the raw
- * body, which could hold anything.
+ * GitHub's own `message` field, with the token redacted, control characters removed and shortened, or "" if there is
+ * none. Never the raw body, which could hold anything. Redaction runs first, so a cut can't split the token.
  */
-async function errorMessage(response: Response): Promise<string> {
+async function errorMessage(response: Response, token: string): Promise<string> {
   try {
     const body = (await response.json()) as unknown;
     if (typeof body === "object" && body !== null && "message" in body && typeof body.message === "string") {
-      return stripControl(body.message).replace(/\s+/g, " ").trim().slice(0, MAX_MESSAGE_LENGTH);
+      return stripControl(redact(body.message, [token])).replace(/\s+/g, " ").trim().slice(0, MAX_MESSAGE_LENGTH);
     }
   } catch {
     // Not JSON: the status alone is enough.

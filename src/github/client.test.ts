@@ -265,6 +265,16 @@ describe("createGitHubClient", () => {
       expect((err as RateLimitedError).resetAt).toEqual(new Date(NOW + 60_000));
     });
 
+    it.each([
+      ["x-ratelimit-reset", { "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1e300" }],
+      ["retry-after", { "retry-after": "1e300" }],
+    ])("a huge %s falls back to a 60 s back-off", async (_label, headers) => {
+      const { fetch } = stub(json({}, 403, headers));
+      const err = await caught(createGitHubClient({ tokens, fetch, now: () => NOW }).get(PATH, issueSchema));
+      expect(err).toBeInstanceOf(RateLimitedError);
+      expect((err as RateLimitedError).resetAt).toEqual(new Date(NOW + 60_000));
+    });
+
     it("bare 429 with no headers backs off 60 s", async () => {
       const { fetch } = stub(json({}, 429));
       const err = await caught(createGitHubClient({ tokens, fetch, now: () => NOW }).get(PATH, issueSchema));
@@ -323,6 +333,13 @@ describe("createGitHubClient", () => {
       const err = await caught(createGitHubClient({ tokens, fetch }).get(PATH, issueSchema));
       expect(err.message).toBe(`GET ${PATH}: HTTP 401 (bad token [redacted])`);
       expectNoToken(err);
+    });
+
+    it("from a long GitHub message where the token straddles the 200-character cut", async () => {
+      const { fetch } = stub(json({ message: `${"x".repeat(190)}${TOKEN}` }, 401));
+      const err = await caught(createGitHubClient({ tokens, fetch }).get(PATH, issueSchema));
+      expect(err.message).toContain("[redacted]");
+      expect(err.message).not.toContain(TOKEN.slice(0, 10));
     });
 
     it("from a body stream that fails mid-read", async () => {
