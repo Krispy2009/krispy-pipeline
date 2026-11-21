@@ -1,6 +1,6 @@
 # 0007 — A human merges, or explicitly asks for the merge
 
-**Status:** Accepted, 2026-11-20. Supersedes [0005](0005-human-merges.md).
+**Status:** Accepted, 2026-11-20. Supersedes [0005](0005-human-merges.md). Amended by [0008](0008-pluggable-sources-and-runners.md): the "enforced by permissions" guarantee holds once a runner has a scoped token; see 0008 rule 4.
 
 ## Context
 

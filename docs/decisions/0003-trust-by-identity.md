@@ -1,6 +1,6 @@
 # 0003 — Trust by numeric identity, never by text
 
-**Status:** Accepted, 2026-11-18
+**Status:** Accepted, 2026-11-18. Amended by [0008](0008-pluggable-sources-and-runners.md): where a runner holds the human's own token (BYO-token mode), the no-merge limits rest on more than the token's permissions until a scoped token exists.
 
 ## Context
 
